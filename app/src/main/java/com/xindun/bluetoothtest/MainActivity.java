@@ -453,7 +453,7 @@ public class MainActivity extends AppCompatActivity {
                     BluetoothService.mInstance.sendMessage(getTestByte(i++));
 
                 try {
-                    sleep(20);
+                    sleep(30);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }

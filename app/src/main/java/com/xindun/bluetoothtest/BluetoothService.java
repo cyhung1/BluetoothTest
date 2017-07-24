@@ -11,8 +11,10 @@ import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothProfile;
 import android.content.Intent;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
 
+import android.os.Message;
 import android.support.annotation.Nullable;
 import android.support.annotation.RequiresApi;
 import android.text.TextUtils;
@@ -20,6 +22,7 @@ import android.text.TextUtils;
 import com.xindun.bluetoothtest.util.LogUtil;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -175,9 +178,9 @@ public class BluetoothService extends Service {
 //                    stringBuilder.append(String.format("%02X ", byteChar));
                 bt = new String(data).getBytes();
             }
-            if (TextUtils.isEmpty(new String(data).trim())) {
+            /*if (TextUtils.isEmpty(new String(data).trim())) {
                 return;
-            }
+            }*/
         }
 
         if (mOnLeChangeListeners != null) {
@@ -205,6 +208,7 @@ public class BluetoothService extends Service {
             LogUtil.w(TAG, "connect " + address, "BluetoothAdapter not initialized or unspecified address.");
             return false;
         }
+        close();
 
         // Previously connected device.  Try to reconnect.
         if (mBluetoothDeviceAddress != null && address.equals(mBluetoothDeviceAddress)
@@ -226,7 +230,7 @@ public class BluetoothService extends Service {
         }
         // We want to directly connect to the device, so we are setting the autoConnect
         // parameter to false.
-        mBluetoothGatt = device.connectGatt(this, false, mGattCallback);
+        mBluetoothGatt = device.connectGatt(this, true, mGattCallback);
         LogUtil.d(TAG, "", "Trying to create a new connection.");
         mBluetoothDeviceAddress = address;
 
@@ -238,7 +242,7 @@ public class BluetoothService extends Service {
             LogUtil.w(TAG, "writeCharacteristic", "BluetoothAdapter not initialized");
             return;
         }
-        LogUtil.w(TAG, "writeCharacteristic", "msg = " + msg);
+        LogUtil.w(TAG, "writeCharacteristic", "msg = " + Arrays.toString( msg));
         if (writeBluetoothGattCharacteristic == null) {
             LogUtil.w(TAG, "writeCharacteristic", "writeBluetoothGattCharacteristic == null");
             return;
@@ -282,8 +286,8 @@ public class BluetoothService extends Service {
                     if (id.contains("2afe")) {
                         int charaProp = gattCharacteristic.getProperties();
                         if ((charaProp | BluetoothGattCharacteristic.PROPERTY_READ) > 0) {
-                            if (mBluetoothGatt != null)
-                                mBluetoothGatt.readCharacteristic(gattCharacteristic);
+                            /*if (mBluetoothGatt != null)
+                                mBluetoothGatt.readCharacteristic(gattCharacteristic);*/
 
                         }
                         if ((charaProp | BluetoothGattCharacteristic.PROPERTY_NOTIFY) > 0) {
@@ -291,24 +295,21 @@ public class BluetoothService extends Service {
                                 LogUtil.w(TAG, "", "BluetoothAdapter not initialized");
                                 return;
                             }
-                            mBluetoothGatt.setCharacteristicNotification(gattCharacteristic, true);
+                           boolean setNoti =  mBluetoothGatt.setCharacteristicNotification(gattCharacteristic, true);
+                            LogUtil.i("stuart", "setNoti ",setNoti +"");
 
-                            // This is specific to Heart Rate Measurement.
-                            LogUtil.i(TAG, "stuart", " gattCharacteristic.getUuid() = " + gattCharacteristic.getUuid() +", description = " + gattCharacteristic.getDescriptor(
-                                    UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")));
-//                            00002afe-0000-1000-8000-00805f9b34fb
-                         /*   if (UUID_HEART_RATE_MEASUREMENT.equals(gattCharacteristic.getUuid())) {
-                                BluetoothGattDescriptor descriptor = gattCharacteristic.getDescriptor(
-                                        UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
-                                descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                                mBluetoothGatt.writeDescriptor(descriptor);
-                            }*/
+                            List<BluetoothGattDescriptor> descriptors = gattCharacteristic.getDescriptors();
+
+                            LogUtil.i("stuart", "descriptors ",descriptors.size() +"");
 
                             BluetoothGattDescriptor descriptor = gattCharacteristic.getDescriptor(
                                     UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
+                          //  mHandler.obtainMessage(0 , descriptor).sendToTarget();
                             if (descriptor != null) {
                                 descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                                mBluetoothGatt.writeDescriptor(descriptor);
+                                boolean write = mBluetoothGatt.writeDescriptor(descriptor);
+                                LogUtil.i(TAG, "stuart", "writeDescriptor = " + write);
+
                             }
 
 
@@ -329,7 +330,56 @@ public class BluetoothService extends Service {
             }
         }
 
+
+
     }
+   /* Handler mHandler = new Handler() {
+
+        @Override
+        public void handleMessage(Message msg) {
+            BluetoothGattDescriptor descriptor = (BluetoothGattDescriptor) msg.obj;
+            if (descriptor != null) {
+                descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+
+                boolean write = mBluetoothGatt.writeDescriptor(descriptor);
+                LogUtil.i(TAG, "stuart", "handleMessage  writeDescriptor = " + write);
+            }
+        }
+    };*/
+
+    /*public boolean writeDescriptor(BluetoothGattDescriptor descriptor) {
+        if (DBG) Log.d(TAG, "writeDescriptor() - uuid: " + descriptor.getUuid());
+        if (mService == null || mClientIf == 0) return false;
+
+        BluetoothGattCharacteristic characteristic = descriptor.getCharacteristic();
+        if (characteristic == null) return false;
+
+        BluetoothGattService service = characteristic.getService();
+        if (service == null) return false;
+
+        BluetoothDevice device = service.getDevice();
+        if (device == null) return false;
+
+        synchronized(mDeviceBusy) {
+            if (mDeviceBusy) return false;
+            mDeviceBusy = true;
+        }
+
+        try {
+            mService.writeDescriptor(mClientIf, device.getAddress(), service.getType(),
+                    service.getInstanceId(), new ParcelUuid(service.getUuid()),
+                    characteristic.getInstanceId(), new ParcelUuid(characteristic.getUuid()),
+                    descriptor.getInstanceId(), new ParcelUuid(descriptor.getUuid()),
+                    characteristic.getWriteType(), AUTHENTICATION_NONE,
+                    descriptor.getValue());
+        } catch (RemoteException e) {
+            Log.e(TAG,"",e);
+            mDeviceBusy = false;
+            return false;
+        }
+
+        return true;
+    }*/
 
     public void readCharacteristic(BluetoothGattCharacteristic characteristic) {
         if (mBluetoothAdapter == null || mBluetoothGatt == null) {
